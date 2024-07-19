@@ -1,0 +1,11 @@
+.{
+    .name = "libregex-oniguruma",
+    .version = "6.9.9",
+    .minimum_zig_version = "0.13.0",
+    .paths = .{
+        "LICENSE",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
