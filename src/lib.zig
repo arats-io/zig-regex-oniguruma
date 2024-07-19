@@ -9,13 +9,45 @@ pub const Error = error{
     Invalid,
 };
 
+const max_encoders = 30;
+
 pub fn compile(allocator: std.mem.Allocator, pattern: [:0]const u8) !Matcher {
-    var encondings = try allocator.alloc(c.OnigEncoding, 1);
+    var encondings = try allocator.alloc(c.OnigEncoding, max_encoders);
     errdefer allocator.free(encondings);
 
     encondings[0] = &c.OnigEncodingASCII;
+    encondings[1] = &c.OnigEncodingISO_8859_1;
+    encondings[2] = &c.OnigEncodingISO_8859_2;
+    encondings[3] = &c.OnigEncodingISO_8859_3;
+    encondings[4] = &c.OnigEncodingISO_8859_4;
+    encondings[5] = &c.OnigEncodingISO_8859_5;
+    encondings[6] = &c.OnigEncodingISO_8859_6;
+    encondings[7] = &c.OnigEncodingISO_8859_7;
+    encondings[8] = &c.OnigEncodingISO_8859_8;
+    encondings[9] = &c.OnigEncodingISO_8859_9;
+    encondings[10] = &c.OnigEncodingISO_8859_10;
+    encondings[11] = &c.OnigEncodingISO_8859_11;
+    encondings[12] = &c.OnigEncodingISO_8859_13;
+    encondings[13] = &c.OnigEncodingISO_8859_14;
+    encondings[14] = &c.OnigEncodingISO_8859_15;
+    encondings[15] = &c.OnigEncodingISO_8859_16;
+    encondings[16] = &c.OnigEncodingUTF8;
+    encondings[17] = &c.OnigEncodingUTF16_BE;
+    encondings[18] = &c.OnigEncodingUTF16_LE;
+    encondings[19] = &c.OnigEncodingUTF32_BE;
+    encondings[20] = &c.OnigEncodingUTF32_LE;
+    encondings[21] = &c.OnigEncodingEUC_JP;
+    encondings[22] = &c.OnigEncodingEUC_TW;
+    encondings[23] = &c.OnigEncodingEUC_KR;
+    encondings[24] = &c.OnigEncodingEUC_CN;
+    encondings[25] = &c.OnigEncodingSJIS;
+    encondings[26] = &c.OnigEncodingKOI8_R;
+    encondings[27] = &c.OnigEncodingCP1251;
+    encondings[28] = &c.OnigEncodingBIG5;
+    encondings[29] = &c.OnigEncodingGB18030;
+    //encondings[30] = &c.OnigEncodingKOI8;
 
-    var res = c.onig_initialize(encondings.ptr, 1);
+    var res = c.onig_initialize(encondings.ptr, max_encoders);
     if (res != c.ONIG_NORMAL) {
         return Error.Invalid;
     }
@@ -57,7 +89,7 @@ pub const Matcher = struct {
         c.onig_free(self.regex.*);
         _ = c.onig_end();
 
-        self.allocator.free(self.encondings[0..1]);
+        self.allocator.free(self.encondings[0..max_encoders]);
         self.allocator.destroy(self.regex);
         self.allocator.destroy(self.errorInfos);
         self.allocator.free(self.region[0..1]);
