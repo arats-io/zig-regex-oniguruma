@@ -9,14 +9,19 @@ pub fn main() !void {
 
     const allocator = arena.allocator();
 
-    var matcher = try regex.compile(allocator, "a(.*)b|[e-f]+");
+    var matcher = try regex.compile(allocator, "abc(.(*COUNT[x]))*f");
     defer matcher.deinit();
 
+    std.debug.print("-------- {}\n", .{matcher.match("abcdefg")});
     std.debug.print("-------- {}\n", .{matcher.match("uuuuu")});
     std.debug.print("-------- {}\n", .{matcher.match("as ab")});
 
-    if (matcher.matchGroup("zzzzaffffffffb")) |d| {
+    if (matcher.matchGroup("abcdefg")) |d| {
         std.debug.print("-------- {any}\n", .{d.groups()});
         std.debug.print("-------- {any}\n", .{d.findIndex(1)});
+    }
+
+    if (matcher.matchGroup("abcssf")) |d| {
+        std.debug.print("-------- {any}\n", .{try d.findByTag("x")});
     }
 }

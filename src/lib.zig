@@ -7,6 +7,7 @@ const c = @cImport({
 
 pub const Error = error{
     Invalid,
+    NoData,
 };
 
 const max_encoders = 30;
@@ -58,19 +59,26 @@ pub fn compile(allocator: std.mem.Allocator, pattern: [:0]const u8) !Matcher {
     const errorInfos = try allocator.create(c.OnigErrorInfo);
     errdefer allocator.destroy(errorInfos);
 
-    res = c.onig_new(regex, pattern.ptr, pattern.ptr + pattern.len, c.ONIG_OPTION_DEFAULT, c.ONIG_ENCODING_ASCII(), c.ONIG_SYNTAX_DEFAULT(), errorInfos);
+    res = c.onig_new(
+        regex,
+        pattern.ptr,
+        pattern.ptr + pattern.len,
+        c.ONIG_OPTION_DEFAULT,
+        c.ONIG_ENCODING_ASCII(),
+        c.ONIG_SYNTAX_DEFAULT(),
+        errorInfos,
+    );
     if (res != c.ONIG_NORMAL) {
         return Error.Invalid;
     }
-
-    const region = c.onig_region_new();
 
     return Matcher{
         .allocator = allocator,
         .encondings = encondings.ptr,
         .regex = regex,
         .errorInfos = errorInfos,
-        .region = region,
+        .region = c.onig_region_new(),
+        .mp = c.onig_new_match_param(),
     };
 }
 
@@ -83,8 +91,13 @@ pub const Matcher = struct {
     regex: *c.OnigRegex,
     errorInfos: *c.OnigErrorInfo,
     region: [*]c.OnigRegion,
+    mp: ?*c.OnigMatchParam,
 
     pub fn deinit(self: *Self) void {
+        if (self.mp) |v| {
+            c.onig_free_match_param(v);
+        }
+
         c.onig_region_free(self.region, 1);
         c.onig_free(self.regex.*);
         _ = c.onig_end();
@@ -96,7 +109,15 @@ pub const Matcher = struct {
     }
 
     pub fn match(self: *Self, input: [:0]const u8) bool {
-        const r = c.onig_search(self.regex.*, input.ptr, input.ptr + input.len, input.ptr, input.ptr + input.len, self.region, c.ONIG_OPTION_DEFAULT);
+        const r = c.onig_search(
+            self.regex.*,
+            input.ptr,
+            input.ptr + input.len,
+            input.ptr,
+            input.ptr + input.len,
+            self.region,
+            c.ONIG_OPTION_DEFAULT,
+        );
         if (r == c.ONIG_MISMATCH) {
             return false;
         }
@@ -104,16 +125,34 @@ pub const Matcher = struct {
     }
 
     pub fn matchGroup(self: *Self, input: [:0]const u8) ?Group {
-        const r = c.onig_search(self.regex.*, input.ptr, input.ptr + input.len, input.ptr, input.ptr + input.len, self.region, c.ONIG_OPTION_DEFAULT);
+        const r = c.onig_search_with_param(
+            self.regex.*,
+            input.ptr,
+            input.ptr + input.len,
+            input.ptr,
+            input.ptr + input.len,
+            self.region,
+            c.ONIG_OPTION_DEFAULT,
+            self.mp,
+        );
         if (r == c.ONIG_MISMATCH) {
             return null;
         }
-        return Group{ .region = self.region[0] };
+        return Group{
+            .allocator = self.allocator,
+            .regex = self.regex,
+            .region = self.region[0],
+            .mp = self.mp,
+        };
     }
 };
 
 pub const Group = struct {
+    allocator: std.mem.Allocator,
+
+    regex: *c.OnigRegex,
     region: c.OnigRegion,
+    mp: ?*c.OnigMatchParam,
 
     pub fn groups(self: Group) usize {
         return @as(usize, @intCast(self.region.num_regs));
@@ -142,5 +181,31 @@ pub const Group = struct {
         const start = @as(usize, @intCast(reg.beg[index]));
         const end = @as(usize, @intCast(reg.end[index]));
         return [2]usize{ start, end };
+    }
+
+    pub fn findByTag(self: Group, tag: []const u8) !?c_long {
+        const val: *c.OnigValue = try self.allocator.create(c.OnigValue);
+        errdefer self.allocator.destroy(val);
+        defer self.allocator.destroy(val);
+
+        const r = c.onig_get_callout_data_by_tag_dont_clear_old(
+            self.regex.*,
+            self.mp,
+            tag.ptr,
+            tag.ptr + tag.len,
+            0,
+            0,
+            @constCast(val),
+        );
+        if (r < c.ONIG_NORMAL) {
+            // var buff: [2048]u8 = undefined;
+            // const len = c.onig_error_code_to_str(&buff, r);
+            // std.debug.print("{s}\n", .{buff[0..@as(usize, @intCast(len))]});
+            return Error.Invalid;
+        }
+        if (r == c.ONIG_VALUE_IS_NOT_SET) {
+            return null;
+        }
+        return val.l;
     }
 };
